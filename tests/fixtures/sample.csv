@@ -1,0 +1,4 @@
+date,description,amount,account_number,card_number,email,name
+2024-01-15,Coffee Shop,-4.50,1234567890,4111111111111234,john.doe@example.com,John Doe
+2024-01-16,Gas Station,-45.00,1234567890,4111111111111234,jane.smith@example.com,Jane Smith
+2024-01-17,Salary Deposit,3000.00,1234567890,,payroll@company.com,Employer

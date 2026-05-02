@@ -1,0 +1,53 @@
+# pii-cleaner configuration example
+# All settings are optional and have sensible defaults
+
+dry_run: false
+create_audit_report: true
+retain_row_count: true
+confidence_threshold: 0.5
+
+# Specific people/orgs to always redact
+identities:
+  - "John Q Public"
+  - "Jane Doe"
+  - "ACME Holdings LLC"
+
+aliases:
+  - "Johnny Public"
+  - "J. Q. Public"
+
+# Custom regex patterns
+custom_patterns:
+  - name: "internal_customer_id"
+    regex: "\\bCUST-[0-9]{6}\\b"
+    action: "replace"
+    replacement: "[CUSTOMER_ID]"
+
+# Financial masking rules
+financial_rules:
+  account_number:
+    preserve_last_n: 4
+    mask_char: "X"
+  card_number:
+    preserve_last_n: 4
+    mask_char: "X"
+
+# CSV-specific settings
+csv:
+  sensitive_columns: []
+  preserve_headers: true
+
+# PDF-specific settings
+pdf:
+  extract_tables: true
+  output_formats:
+    txt: true
+    md: true
+    json_report: true
+    pdf: false
+
+# File inclusion/exclusion
+include_globs:
+  - "*.csv"
+  - "*.pdf"
+exclude_globs: []
