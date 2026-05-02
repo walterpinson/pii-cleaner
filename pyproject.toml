@@ -12,7 +12,7 @@ description = "A CLI tool for redacting PII from CSV and PDF bank/credit card st
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-authors = [{ name = "Walter Pinson" }]
+authors = [{ name = "pii-cleaner contributors" }]
 keywords = ["pii", "redaction", "privacy", "csv", "pdf"]
 classifiers = [
     "Development Status :: 3 - Alpha",

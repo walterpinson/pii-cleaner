@@ -6,12 +6,12 @@ confidence_threshold: 0.6
 
 # Well-known identities in your organization
 identities:
-  - "Walter Pinson"
-  - "Pinson Financial LLC"
+  - "Jane Q. Public"
+  - "Acme Financial LLC"
 
 aliases:
-  - "W. Pinson"
-  - "Pinson Financial"
+  - "J. Q. Public"
+  - "Acme Financial"
 
 # Custom patterns for internal data formats
 custom_patterns:
