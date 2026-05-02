@@ -1,0 +1,76 @@
+# Advanced pii-cleaner configuration example
+
+dry_run: false
+create_audit_report: true
+confidence_threshold: 0.6
+
+# Well-known identities in your organization
+identities:
+  - "Jane Q. Public"
+  - "Acme Financial LLC"
+
+aliases:
+  - "J. Q. Public"
+  - "Acme Financial"
+
+# Custom patterns for internal data formats
+custom_patterns:
+  - name: "employee_id"
+    regex: "\\bEMP-[0-9]{5}\\b"
+    action: "replace"
+    replacement: "[EMPLOYEE_ID]"
+
+  - name: "internal_account_ref"
+    regex: "\\bACCT#[0-9]{8}\\b"
+    action: "replace"
+    replacement: "[ACCOUNT_REF]"
+
+  - name: "project_code"
+    regex: "\\bPROJ-[A-Z]{2}[0-9]{4}\\b"
+    action: "replace"
+    replacement: "[PROJECT_CODE]"
+
+# Financial rules - preserve more digits for verification
+financial_rules:
+  account_number:
+    preserve_last_n: 4
+    mask_char: "X"
+  card_number:
+    preserve_last_n: 4
+    mask_char: "X"
+  routing_number:
+    preserve_last_n: 4
+    mask_char: "X"
+
+# Per-entity configuration
+entity_types:
+  DATE_TIME:
+    enabled: false  # Don't redact dates - they're needed for statement context
+  LOCATION:
+    enabled: true
+    replacement: "[LOCATION]"
+
+# CSV settings
+csv:
+  sensitive_columns:
+    - "ssn"
+    - "tax_id"
+    - "full_account_number"
+  preserve_headers: true
+
+# PDF settings
+pdf:
+  extract_tables: true
+  output_formats:
+    txt: true
+    md: true
+    json_report: true
+    pdf: false
+
+# Only process specific file patterns
+include_globs:
+  - "statement_*.csv"
+  - "*.pdf"
+exclude_globs:
+  - "archive_*.csv"
+  - "template_*.csv"
