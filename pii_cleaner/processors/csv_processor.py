@@ -13,9 +13,7 @@ import pandas as pd
 from pii_cleaner.config import CleanerConfig
 from pii_cleaner.redactors.text_redactor import TextRedactor
 from pii_cleaner.utils.hashing import hash_file
-from pii_cleaner.utils.file_utils import split_csv_sections
-
-logger = logging.getLogger(__name__)
+from pii_cleaner.utils.file_utils import split_csv_sections, AMOUNT_RE
 
 
 @dataclass
@@ -107,7 +105,15 @@ class CSVProcessor:
             else:
                 for idx, val in df[col].items():
                     if pd.notna(val) and isinstance(val, str):
-                        res = self.redactor.redact(str(val))
+                        stripped = val.strip()
+                        # Skip cells that are formatted financial amounts — Presidio/
+                        # spaCy NER can misclassify numbers like "-40.00" as PERSON.
+                        # The regex requires a decimal point and caps the integer part
+                        # to 9 digits so card/account numbers (15-16 digits, no decimal)
+                        # are still analyzed normally.
+                        if AMOUNT_RE.match(stripped):
+                            continue
+                        res = self.redactor.redact(stripped)
                         if res.changed:
                             result_df.at[idx, col] = res.redacted
                             fields_changed += 1
