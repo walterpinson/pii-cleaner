@@ -3,7 +3,6 @@ name: "Commit"
 description: "Create git commits with Conventional Commits messages. Use when you want to commit staged or unstaged changes with well-formed, logically grouped commit messages."
 argument-hint: "Optional: describe scope or any special instructions (e.g. 'feat scope only')"
 agent: "agent"
-tools: [execute]
 ---
 
 Analyze the current git repository state and create one or more commits following the [Conventional Commits v1.0.0](https://www.conventionalcommits.org/en/v1.0.0) specification. Work through staged changes first, then unstaged changes.

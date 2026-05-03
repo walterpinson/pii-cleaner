@@ -3,7 +3,6 @@ name: "Commit Message"
 description: "Generate Conventional Commits message(s) from current git changes — staged files first, or all changes grouped into logical commits for copy/paste"
 argument-hint: "Optional scope or context hint (e.g. 'auth module')"
 agent: "agent"
-tools: [execute]
 ---
 
 # Generate Commit Message
