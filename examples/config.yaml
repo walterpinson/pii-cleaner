@@ -16,6 +16,12 @@ aliases:
   - "Johnny Public"
   - "J. Q. Public"
 
+# Terms that should never be redacted, even if detected as PII.
+# Useful for merchant/store names that look like person names.
+whitelist:
+  - "Harris Teeter"
+  - "Trader Joe's"
+
 # Custom regex patterns
 custom_patterns:
   - name: "internal_customer_id"
