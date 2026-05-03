@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -17,10 +18,13 @@ from rich.table import Table
 from pii_cleaner import __version__
 from pii_cleaner.config import load_config, validate_config, CleanerConfig
 from pii_cleaner.processors.csv_processor import CSVProcessor
+from pii_cleaner.utils.file_utils import split_csv_sections
 from pii_cleaner.processors.pdf_processor import PDFProcessor
 from pii_cleaner.redactors.text_redactor import TextRedactor
 from pii_cleaner.reporters.run_reporter import RunReport, FileResult, load_report
 from pii_cleaner.utils.file_utils import collect_files, is_supported, make_output_path
+
+DEFAULT_OUTPUT_DIRNAME = "clean"
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -112,6 +116,12 @@ def _print_run_summary(report: RunReport) -> None:
         )
     )
 
+    all_warnings = [(Path(fr.input_path).name, w) for fr in report.files for w in fr.warnings]
+    if all_warnings:
+        console.print()
+        for fname, msg in all_warnings:
+            console.print(f"[yellow]⚠ {fname}:[/yellow] {msg}")
+
 
 @redact_app.command("file")
 def redact_file(
@@ -137,7 +147,7 @@ def redact_file(
         console.print(Panel("[yellow]DRY RUN mode - no files will be written. Pass --apply to write output.[/yellow]"))
 
     if output is None:
-        output = input_path.parent / "output" / input_path.name
+        output = input_path.parent / DEFAULT_OUTPUT_DIRNAME / input_path.name
 
     if not force and output.resolve() == input_path.resolve():
         error_console.print("Output path is the same as input. Use --force to overwrite.")
@@ -228,7 +238,7 @@ def redact_folder(
     if dry_run:
         console.print(Panel("[yellow]DRY RUN mode - no files will be written. Pass --apply to write output.[/yellow]"))
 
-    output_dir = output or (input_dir.parent / "output")
+    output_dir = output or (input_dir / DEFAULT_OUTPUT_DIRNAME)
 
     supported, skipped = collect_files(
         input_dir,
@@ -338,13 +348,26 @@ def preview_file(
     suffix = input_path.suffix.lower()
     if suffix == ".csv":
         import pandas as pd
-        df = pd.read_csv(input_path, dtype=str, nrows=lines)
-        for col in df.columns:
-            for idx, val in df[col].items():
-                if pd.notna(val):
-                    result = redactor.redact(str(val))
-                    if result.changed:
-                        console.print(f"[dim]Col={col} Row={idx}:[/dim] [red]{val}[/red] → [green]{result.redacted}[/green]")
+        raw_text = input_path.read_text(encoding="utf-8", errors="replace")
+        sections = split_csv_sections(raw_text)
+        rows_shown = 0
+        for section_text in sections:
+            if rows_shown >= lines:
+                break
+            df = pd.read_csv(io.StringIO(section_text), dtype=str)
+            for idx in df.index:
+                if rows_shown >= lines:
+                    break
+                row_had_change = False
+                for col in df.columns:
+                    val = df.at[idx, col]
+                    if pd.notna(val):
+                        result = redactor.redact(str(val))
+                        if result.changed:
+                            console.print(f"[dim]Col={col} Row={idx}:[/dim] [red]{val}[/red] → [green]{result.redacted}[/green]")
+                            row_had_change = True
+                if row_had_change:
+                    rows_shown += 1
     elif suffix == ".pdf":
         import pdfplumber
         with pdfplumber.open(input_path) as pdf:
