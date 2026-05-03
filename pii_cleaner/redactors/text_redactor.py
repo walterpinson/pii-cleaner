@@ -115,7 +115,7 @@ class TextRedactor:
                 if whitelist_lower:
                     results = [
                         r for r in results
-                        if current_text[r.start:r.end].lower() not in whitelist_lower
+                        if not any(w in current_text[r.start:r.end].lower() for w in whitelist_lower)
                     ]
 
                 operators = {}
