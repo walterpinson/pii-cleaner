@@ -21,6 +21,14 @@ This installs all dependencies, including the spaCy NLP model required for entit
 
 ### As a package
 
+Install directly from the public GitHub repository:
+
+```bash
+pip install git+https://github.com/walterpinson/pii-cleaner.git
+```
+
+Or, once published to PyPI:
+
 ```bash
 pip install pii-cleaner
 ```
