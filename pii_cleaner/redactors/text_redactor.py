@@ -26,10 +26,9 @@ DEFAULT_ENTITIES = [
     "CREDIT_CARD",
     "US_SSN",
     "US_BANK_NUMBER",
-    "DATE_TIME",
     "NRP",
     "IP_ADDRESS",
-    "URL",
+    # "URL",  # Disabled: merchant URLs (walmart.com, amazon.com) are not PII in financial context
 ]
 
 
@@ -48,7 +47,11 @@ class TextRedactor:
     def _get_analyzer(self) -> AnalyzerEngine:
         if self._analyzer is None:
             registry = RecognizerRegistry()
-            registry.load_predefined_recognizers()
+            _presidio_logger = logging.getLogger("presidio-analyzer")
+            _prev_level = _presidio_logger.level
+            _presidio_logger.setLevel(logging.ERROR)
+            registry.load_predefined_recognizers(languages=["en"])
+            _presidio_logger.setLevel(_prev_level)
 
             identity_rec = build_identity_recognizer(
                 self.config.identities,
@@ -84,13 +87,37 @@ class TextRedactor:
         # Step 2: Presidio NER
         try:
             analyzer = self._get_analyzer()
+            # Limit analysis to explicitly allowed entity types so Presidio never
+            # redacts entities (e.g. DATE_TIME) that are not in our allow-list.
+            config_entities = [
+                et for et, cfg in self.config.entity_types.items() if cfg.enabled
+            ]
+            # Also include entity types from registered custom recognizers
+            # (e.g. CONFIGURED_IDENTITY from identities/aliases, custom patterns).
+            custom_entities = (
+                ["CONFIGURED_IDENTITY"] if (self.config.identities or self.config.aliases) else []
+            ) + [p.name.upper() for p in self.config.custom_patterns]
+            entities_to_analyze = list(
+                dict.fromkeys(DEFAULT_ENTITIES + config_entities + custom_entities)
+            )
             results = analyzer.analyze(
                 text=current_text,
                 language=language,
                 score_threshold=self.config.confidence_threshold,
+                entities=entities_to_analyze,
             )
 
             if results:
+                # Drop any detection that exactly matches a whitelisted term
+                # (case-insensitive). This prevents merchant names like
+                # "Harris Teeter" from being redacted as PERSON.
+                whitelist_lower = {w.lower() for w in self.config.whitelist}
+                if whitelist_lower:
+                    results = [
+                        r for r in results
+                        if current_text[r.start:r.end].lower() not in whitelist_lower
+                    ]
+
                 operators = {}
                 for result in results:
                     entity_type = result.entity_type
