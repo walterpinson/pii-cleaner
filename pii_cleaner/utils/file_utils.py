@@ -59,3 +59,19 @@ def make_output_path(
     except ValueError:
         rel = Path(input_path.name)
     return output_base / rel
+
+
+def split_csv_sections(raw_text: str) -> list[str]:
+    """Split raw CSV text into sections separated by blank lines."""
+    sections = []
+    current_lines: list[str] = []
+    for line in raw_text.splitlines():
+        if line.strip() == "":
+            if current_lines:
+                sections.append("\n".join(current_lines))
+                current_lines = []
+        else:
+            current_lines.append(line)
+    if current_lines:
+        sections.append("\n".join(current_lines))
+    return sections
