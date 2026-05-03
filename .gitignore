@@ -30,3 +30,9 @@ htmlcov/
 output/
 *.log
 .DS_Store
+
+# User-specific config (examples/config.yaml is intentionally tracked)
+/config.yaml
+/config.yml
+/.pii-cleaner.yaml
+/.pii-cleaner.yml
