@@ -47,6 +47,8 @@ class OutputFormats(BaseModel):
 
 class CSVConfig(BaseModel):
     sensitive_columns: list[str] = Field(default_factory=list)
+    mask_columns: list[str] = Field(default_factory=list)
+    exclude_columns: list[str] = Field(default_factory=list)
     preserve_headers: bool = True
     chunk_size: int = 10000
 
@@ -71,6 +73,7 @@ class CleanerConfig(BaseModel):
 
     identities: list[str] = Field(default_factory=list)
     aliases: list[str] = Field(default_factory=list)
+    whitelist: list[str] = Field(default_factory=list)
     custom_patterns: list[CustomPattern] = Field(default_factory=list)
 
     csv: CSVConfig = Field(default_factory=CSVConfig)
@@ -80,11 +83,25 @@ class CleanerConfig(BaseModel):
 DEFAULT_CONFIG = CleanerConfig()
 
 
+_DEFAULT_CONFIG_NAMES = ["config.yaml", "config.yml", ".pii-cleaner.yaml", ".pii-cleaner.yml"]
+
+
 def load_config(config_path: Path | None) -> CleanerConfig:
-    """Load configuration from a YAML file."""
+    """Load configuration from a YAML file.
+
+    If no path is given, searches for a config file in the current working
+    directory using conventional names before falling back to defaults.
+    """
     if config_path is None:
-        logger.debug("No config file provided, using defaults.")
-        return CleanerConfig()
+        for name in _DEFAULT_CONFIG_NAMES:
+            candidate = Path.cwd() / name
+            if candidate.exists():
+                logger.debug(f"Auto-discovered config: {candidate}")
+                config_path = candidate
+                break
+        else:
+            logger.debug("No config file found, using defaults.")
+            return CleanerConfig()
 
     if not config_path.exists():
         raise FileNotFoundError(f"Config file not found: {config_path}")
