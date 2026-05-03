@@ -92,7 +92,7 @@ def test_redact_folder_apply(tmp_path):
         "--apply",
     ])
     assert result.exit_code == 0
-    assert (output_dir / "a.csv").exists()
+    assert (output_dir / "a.clean.csv").exists()
 
 
 def test_version():

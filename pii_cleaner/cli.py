@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import io
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -17,16 +16,16 @@ from rich.table import Table
 
 from pii_cleaner import __version__
 from pii_cleaner.config import load_config, validate_config, CleanerConfig
-from pii_cleaner.processors.csv_processor import CSVProcessor
-from pii_cleaner.utils.file_utils import split_csv_sections
-from pii_cleaner.processors.pdf_processor import PDFProcessor
+from pii_cleaner.processors.csv_processor import CSVProcessor, CSVProcessResult
+from pii_cleaner.processors.pdf_processor import PDFProcessor, PDFProcessResult
 from pii_cleaner.redactors.text_redactor import TextRedactor
 from pii_cleaner.reporters.run_reporter import RunReport, FileResult, load_report
-from pii_cleaner.utils.file_utils import collect_files, is_supported, make_output_path
-
-DEFAULT_OUTPUT_DIRNAME = "clean"
+from pii_cleaner.utils.file_utils import (
+    clean_path, collect_files, is_supported, make_output_path, split_csv_sections,
+)
 
 logger = logging.getLogger(__name__)
+DEFAULT_OUTPUT_DIRNAME = "clean"
 console = Console()
 error_console = Console(stderr=True, style="red")
 
@@ -72,6 +71,75 @@ def _build_processors(config: CleanerConfig) -> tuple[CSVProcessor, PDFProcessor
     csv_proc = CSVProcessor(config, redactor)
     pdf_proc = PDFProcessor(config, redactor)
     return csv_proc, pdf_proc
+
+
+def _start_run() -> tuple[str, str]:
+    """Return (run_id, started_at) for a new run."""
+    return str(uuid.uuid4()), datetime.now(timezone.utc).isoformat()
+
+
+def _print_dry_run_notice() -> None:
+    console.print(Panel("[yellow]DRY RUN mode - no files will be written. Pass --apply to write output.[/yellow]"))
+
+
+def _make_csv_file_result(
+    input_path: Path, out_path: Path, result: CSVProcessResult
+) -> FileResult:
+    return FileResult(
+        input_path=str(input_path),
+        output_paths=[str(out_path)] if result.output_path else [],
+        file_type="csv",
+        success=result.success,
+        rows_or_pages=result.rows_processed,
+        fields_changed=result.fields_changed,
+        entities_by_type=result.entities_by_type,
+        warnings=result.warnings,
+        error=result.error,
+        input_hash=result.input_hash,
+        output_hash=result.output_hash,
+    )
+
+
+def _make_pdf_file_result(input_path: Path, result: PDFProcessResult) -> FileResult:
+    return FileResult(
+        input_path=str(input_path),
+        output_paths=[str(p) for p in result.output_paths],
+        file_type="pdf",
+        success=result.success,
+        rows_or_pages=result.pages_processed,
+        fields_changed=0,
+        entities_by_type=result.entities_by_type,
+        warnings=result.warnings,
+        error=result.error,
+        input_hash=result.input_hash,
+        output_hash=None,
+    )
+
+
+def _finalize_run(
+    run_id: str,
+    started_at: str,
+    dry_run: bool,
+    config: Path | None,
+    file_results: list[FileResult],
+    report_dir: Path,
+    cfg: CleanerConfig,
+) -> None:
+    report = RunReport(
+        run_id=run_id,
+        started_at=started_at,
+        completed_at=datetime.now(timezone.utc).isoformat(),
+        dry_run=dry_run,
+        config_path=str(config) if config else None,
+        files=file_results,
+    )
+    _print_run_summary(report)
+    if cfg.create_audit_report and not dry_run:
+        report_path = report_dir / f"report_{run_id[:8]}.json"
+        report.save(report_path)
+        console.print(f"[dim]Report saved: {report_path}[/dim]")
+    if report.failed_files:
+        raise typer.Exit(1)
 
 
 def _print_run_summary(report: RunReport) -> None:
@@ -144,18 +212,16 @@ def redact_file(
     dry_run = not apply
 
     if dry_run:
-        console.print(Panel("[yellow]DRY RUN mode - no files will be written. Pass --apply to write output.[/yellow]"))
+        _print_dry_run_notice()
 
     if output is None:
-        output = input_path.parent / DEFAULT_OUTPUT_DIRNAME / input_path.name
+        output = clean_path(input_path.parent / DEFAULT_OUTPUT_DIRNAME / input_path.name)
 
     if not force and output.resolve() == input_path.resolve():
         error_console.print("Output path is the same as input. Use --force to overwrite.")
         raise typer.Exit(1)
 
-    run_id = str(uuid.uuid4())
-    started_at = datetime.now(timezone.utc).isoformat()
-
+    run_id, started_at = _start_run()
     csv_proc, pdf_proc = _build_processors(cfg)
     file_results = []
 
@@ -165,57 +231,15 @@ def redact_file(
         suffix = input_path.suffix.lower()
         if suffix == ".csv":
             result = csv_proc.process(input_path, output, dry_run=dry_run)
-            file_results.append(FileResult(
-                input_path=str(input_path),
-                output_paths=[str(output)] if result.output_path else [],
-                file_type="csv",
-                success=result.success,
-                rows_or_pages=result.rows_processed,
-                fields_changed=result.fields_changed,
-                entities_by_type=result.entities_by_type,
-                warnings=result.warnings,
-                error=result.error,
-                input_hash=result.input_hash,
-                output_hash=result.output_hash,
-            ))
+            file_results.append(_make_csv_file_result(input_path, output, result))
         elif suffix == ".pdf":
             out_dir = output.parent if output.suffix == ".pdf" else output
             result = pdf_proc.process(input_path, out_dir, dry_run=dry_run)
-            file_results.append(FileResult(
-                input_path=str(input_path),
-                output_paths=[str(p) for p in result.output_paths],
-                file_type="pdf",
-                success=result.success,
-                rows_or_pages=result.pages_processed,
-                fields_changed=0,
-                entities_by_type=result.entities_by_type,
-                warnings=result.warnings,
-                error=result.error,
-                input_hash=result.input_hash,
-                output_hash=None,
-            ))
+            file_results.append(_make_pdf_file_result(input_path, result))
 
         progress.advance(task)
 
-    report = RunReport(
-        run_id=run_id,
-        started_at=started_at,
-        completed_at=datetime.now(timezone.utc).isoformat(),
-        dry_run=dry_run,
-        config_path=str(config) if config else None,
-        files=file_results,
-    )
-
-    _print_run_summary(report)
-
-    if cfg.create_audit_report and apply:
-        report_path = output.parent / f"report_{run_id[:8]}.json"
-        report.save(report_path)
-        console.print(f"[dim]Report saved: {report_path}[/dim]")
-
-    failed = [f for f in file_results if not f.success]
-    if failed:
-        raise typer.Exit(1)
+    _finalize_run(run_id, started_at, dry_run, config, file_results, output.parent, cfg)
 
 
 @redact_app.command("folder")
@@ -236,7 +260,7 @@ def redact_folder(
     dry_run = not apply
 
     if dry_run:
-        console.print(Panel("[yellow]DRY RUN mode - no files will be written. Pass --apply to write output.[/yellow]"))
+        _print_dry_run_notice()
 
     output_dir = output or (input_dir / DEFAULT_OUTPUT_DIRNAME)
 
@@ -255,8 +279,7 @@ def redact_folder(
         for s in skipped:
             console.print(f"[yellow]⚠ Skipping unsupported file: {s.name}[/yellow]")
 
-    run_id = str(uuid.uuid4())
-    started_at = datetime.now(timezone.utc).isoformat()
+    run_id, started_at = _start_run()
     csv_proc, pdf_proc = _build_processors(cfg)
     file_results = []
 
@@ -271,62 +294,20 @@ def redact_folder(
 
         for file_path in supported:
             progress.update(task, description=f"Processing {file_path.name}...")
-            out_path = make_output_path(file_path, input_dir, output_dir)
+            out_path = clean_path(make_output_path(file_path, input_dir, output_dir))
 
             suffix = file_path.suffix.lower()
             if suffix == ".csv":
                 result = csv_proc.process(file_path, out_path, dry_run=dry_run)
-                file_results.append(FileResult(
-                    input_path=str(file_path),
-                    output_paths=[str(out_path)] if result.output_path else [],
-                    file_type="csv",
-                    success=result.success,
-                    rows_or_pages=result.rows_processed,
-                    fields_changed=result.fields_changed,
-                    entities_by_type=result.entities_by_type,
-                    warnings=result.warnings,
-                    error=result.error,
-                    input_hash=result.input_hash,
-                    output_hash=result.output_hash,
-                ))
+                file_results.append(_make_csv_file_result(file_path, out_path, result))
             elif suffix == ".pdf":
                 pdf_out_dir = output_dir / out_path.stem
                 result = pdf_proc.process(file_path, pdf_out_dir, dry_run=dry_run)
-                file_results.append(FileResult(
-                    input_path=str(file_path),
-                    output_paths=[str(p) for p in result.output_paths],
-                    file_type="pdf",
-                    success=result.success,
-                    rows_or_pages=result.pages_processed,
-                    fields_changed=0,
-                    entities_by_type=result.entities_by_type,
-                    warnings=result.warnings,
-                    error=result.error,
-                    input_hash=result.input_hash,
-                    output_hash=None,
-                ))
+                file_results.append(_make_pdf_file_result(file_path, result))
 
             progress.advance(task)
 
-    report = RunReport(
-        run_id=run_id,
-        started_at=started_at,
-        completed_at=datetime.now(timezone.utc).isoformat(),
-        dry_run=dry_run,
-        config_path=str(config) if config else None,
-        files=file_results,
-    )
-
-    _print_run_summary(report)
-
-    if cfg.create_audit_report and apply:
-        report_path = output_dir / f"report_{run_id[:8]}.json"
-        report.save(report_path)
-        console.print(f"[dim]Report saved: {report_path}[/dim]")
-
-    failed = [f for f in file_results if not f.success]
-    if failed:
-        raise typer.Exit(1)
+    _finalize_run(run_id, started_at, dry_run, config, file_results, output_dir, cfg)
 
 
 @app.command("preview")
@@ -341,31 +322,32 @@ def preview_file(
         raise typer.Exit(1)
 
     cfg = _load_config_or_exit(config)
-    redactor = TextRedactor(cfg)
+    csv_proc, pdf_proc = _build_processors(cfg)
 
     console.print(Panel(f"[cyan]Preview: {input_path.name}[/cyan]"))
 
     suffix = input_path.suffix.lower()
     if suffix == ".csv":
-        import pandas as pd
-        raw_text = input_path.read_text(encoding="utf-8", errors="replace")
+        raw_text = input_path.read_text(encoding="utf-8-sig", errors="replace")
         sections = split_csv_sections(raw_text)
         rows_shown = 0
         for section_text in sections:
             if rows_shown >= lines:
                 break
-            df = pd.read_csv(io.StringIO(section_text), dtype=str)
+            df = csv_proc._parse_section(section_text)
+            if df.empty:
+                continue
+            result_df, _, _ = csv_proc._process_dataframe(df)
             for idx in df.index:
                 if rows_shown >= lines:
                     break
                 row_had_change = False
                 for col in df.columns:
-                    val = df.at[idx, col]
-                    if pd.notna(val):
-                        result = redactor.redact(str(val))
-                        if result.changed:
-                            console.print(f"[dim]Col={col} Row={idx}:[/dim] [red]{val}[/red] → [green]{result.redacted}[/green]")
-                            row_had_change = True
+                    orig = df.at[idx, col]
+                    redacted = result_df.at[idx, col]
+                    if orig != redacted:
+                        console.print(f"[dim]Col={col} Row={idx}:[/dim] [red]{orig}[/red] → [green]{redacted}[/green]")
+                        row_had_change = True
                 if row_had_change:
                     rows_shown += 1
     elif suffix == ".pdf":
@@ -373,7 +355,7 @@ def preview_file(
         with pdfplumber.open(input_path) as pdf:
             for page in pdf.pages[:3]:
                 text = page.extract_text() or ""
-                result = redactor.redact(text)
+                result = pdf_proc.redactor.redact(text)
                 console.print(f"\n[bold]--- Page {page.page_number} ---[/bold]")
                 if result.changed:
                     console.print("[dim]Changes detected on this page.[/dim]")
