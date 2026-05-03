@@ -4,9 +4,17 @@ from __future__ import annotations
 
 import fnmatch
 import logging
+import re
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# Matches formatted financial amounts: requires a decimal point and caps the
+# integer part to 9 digits, so card/account numbers (15-16 digits, no decimal)
+# are NOT matched and still pass through to PII analysis.
+# Matches: -40.00  1,234.56  $100.00  -1,234,567.89  15.5%
+# Does not match: 4111111111111234  1234567890  john@example.com
+AMOUNT_RE = re.compile(r'^-?\$?\d{1,9}(?:,\d{3})*\.\d+%?$')
 
 SUPPORTED_EXTENSIONS = {".csv", ".pdf"}
 
@@ -59,6 +67,16 @@ def make_output_path(
     except ValueError:
         rel = Path(input_path.name)
     return output_base / rel
+
+
+def clean_path(path: Path) -> Path:
+    """Return path with '.clean' inserted before the suffix.
+
+    Examples:
+        sales.csv  -> sales.clean.csv
+        report.pdf -> report.clean.pdf
+    """
+    return path.parent / f"{path.stem}.clean{path.suffix}"
 
 
 def split_csv_sections(raw_text: str) -> list[str]:

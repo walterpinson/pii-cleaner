@@ -65,7 +65,7 @@ class CleanerConfig(BaseModel):
     retain_schema: bool = True
     output_dir: str | None = None
     include_globs: list[str] = Field(default_factory=lambda: ["*.csv", "*.pdf"])
-    exclude_globs: list[str] = Field(default_factory=list)
+    exclude_globs: list[str] = Field(default_factory=lambda: ["*.clean.*"])
     confidence_threshold: float = 0.5
 
     entity_types: dict[str, EntityConfig] = Field(default_factory=dict)

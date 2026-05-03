@@ -1,7 +1,7 @@
 """Tests for folder processing."""
 import pytest
 from pathlib import Path
-from pii_cleaner.utils.file_utils import collect_files, is_supported, make_output_path
+from pii_cleaner.utils.file_utils import collect_files, clean_path, is_supported, make_output_path
 
 
 def test_collect_files_finds_csv_and_pdf(tmp_path):
@@ -58,6 +58,12 @@ def test_make_output_path():
 
     result = make_output_path(input_path, input_base, output_base)
     assert result == Path("/data/output/subdir/file.csv")
+
+
+def test_clean_path():
+    assert clean_path(Path("sales.csv")) == Path("sales.clean.csv")
+    assert clean_path(Path("report.pdf")) == Path("report.clean.pdf")
+    assert clean_path(Path("/some/dir/file.csv")) == Path("/some/dir/file.clean.csv")
 
 
 def test_exclude_globs(tmp_path):
