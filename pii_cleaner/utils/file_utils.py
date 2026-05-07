@@ -79,6 +79,18 @@ def clean_path(path: Path) -> Path:
     return path.parent / f"{path.stem}.clean{path.suffix}"
 
 
+def peer_clean_dir(directory: Path) -> Path:
+    """Return the peer *_clean directory for a given directory path.
+
+    The returned path is a sibling of *directory*, not a child of it.
+
+    Examples:
+        /data/bank           -> /data/bank_clean
+        /home/user/exports   -> /home/user/exports_clean
+    """
+    return directory.parent / f"{directory.name}_clean"
+
+
 def split_csv_sections(raw_text: str) -> list[str]:
     """Split raw CSV text into sections separated by blank lines."""
     sections = []

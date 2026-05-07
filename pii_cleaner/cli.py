@@ -21,11 +21,11 @@ from pii_cleaner.processors.pdf_processor import PDFProcessor, PDFProcessResult
 from pii_cleaner.redactors.text_redactor import TextRedactor
 from pii_cleaner.reporters.run_reporter import RunReport, FileResult, load_report
 from pii_cleaner.utils.file_utils import (
-    clean_path, collect_files, is_supported, make_output_path, split_csv_sections,
+    clean_path, collect_files, is_supported, make_output_path, peer_clean_dir,
+    split_csv_sections,
 )
 
 logger = logging.getLogger(__name__)
-DEFAULT_OUTPUT_DIRNAME = "clean"
 console = Console()
 error_console = Console(stderr=True, style="red")
 
@@ -215,7 +215,7 @@ def redact_file(
         _print_dry_run_notice()
 
     if output is None:
-        output = clean_path(input_path.parent / DEFAULT_OUTPUT_DIRNAME / input_path.name)
+        output = clean_path(peer_clean_dir(input_path.parent) / input_path.name)
 
     if not force and output.resolve() == input_path.resolve():
         error_console.print("Output path is the same as input. Use --force to overwrite.")
@@ -262,7 +262,7 @@ def redact_folder(
     if dry_run:
         _print_dry_run_notice()
 
-    output_dir = output or (input_dir / DEFAULT_OUTPUT_DIRNAME)
+    output_dir = output or peer_clean_dir(input_dir)
 
     supported, skipped = collect_files(
         input_dir,
