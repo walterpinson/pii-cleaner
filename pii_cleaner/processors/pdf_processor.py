@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -74,6 +75,14 @@ class PDFProcessor:
                                     str(cell) if cell is not None else "" for cell in row
                                 )
 
+                    # Strip CID font-encoding artifacts produced by pdfplumber
+                    # when it cannot decode embedded font glyphs (e.g. (cid:0)).
+                    # Applied after all content — including tables — is assembled.
+                    text = re.sub(r'\(cid:\d+\)', '', text)
+
+                    if self.config.pdf.sensitive_labels:
+                        text = self._redact_labeled_values(text, self.config.pdf.sensitive_labels)
+
                     result = self.redactor.redact(text)
 
                     for entity in result.entities:
@@ -131,6 +140,25 @@ class PDFProcessor:
                 success=False,
                 error=str(e),
             )
+
+    def _redact_labeled_values(self, text: str, labels: list[str]) -> str:
+        """Redact values that follow any of the given field labels on the same line.
+
+        Matches patterns like:
+            Employee ID: 00123456
+            Employee ID  00123456
+            Employee ID - 00123456
+
+        The label is kept; everything after the separator is replaced with [REDACTED].
+        Matching is case-insensitive.
+        """
+        for label in labels:
+            pattern = re.compile(
+                r'(?i)(\b' + re.escape(label) + r'\b\s*[:\-]?\s*)(.+)',
+                re.MULTILINE,
+            )
+            text = pattern.sub(lambda m: m.group(1) + "[REDACTED]", text)
+        return text
 
     def _write_txt(self, path: Path, pages: list[PageResult]) -> None:
         with open(path, "w", encoding="utf-8") as f:

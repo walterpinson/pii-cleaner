@@ -56,6 +56,7 @@ class CSVConfig(BaseModel):
 class PDFConfig(BaseModel):
     extract_tables: bool = True
     output_formats: OutputFormats = Field(default_factory=OutputFormats)
+    sensitive_labels: list[str] = Field(default_factory=list)
 
 
 class CleanerConfig(BaseModel):

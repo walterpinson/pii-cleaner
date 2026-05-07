@@ -46,6 +46,14 @@ csv:
 # PDF-specific settings
 pdf:
   extract_tables: true
+  # Label-based redaction: whatever value follows these field labels on the same
+  # line is replaced with [REDACTED], regardless of whether Presidio recognises
+  # the value as PII.  Useful for Employee ID, SSN, Home Address, and similar
+  # labelled fields on payroll, tax, or HR documents.
+  sensitive_labels:
+    - "Employee ID"
+    - "Social Security Number"
+    - "Home Address"
   output_formats:
     txt: true
     md: true
