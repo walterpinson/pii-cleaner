@@ -15,9 +15,12 @@ CARD_NUMBER_PATTERN = re.compile(
     r'\b'
 )
 
-# Matches US bank account numbers which typically range from 8-17 digits
+# Matches US bank account numbers which typically range from 8-17 digits.
+# The negative lookbehind (?<!\.) prevents matching the fractional part of
+# decimal numbers (e.g. crypto quantities like 0.00012345) because real
+# account numbers never appear after a decimal point.
 ACCOUNT_NUMBER_PATTERN = re.compile(
-    r'\b(\d{8,17})\b'
+    r'(?<!\.)\b(\d{8,17})\b'
 )
 
 ALREADY_MASKED_PATTERN = re.compile(
