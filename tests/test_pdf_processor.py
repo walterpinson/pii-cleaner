@@ -91,3 +91,41 @@ def test_pdf_redacts_card_numbers(tmp_path, processor):
     txt_content = (out_dir / "test.txt").read_text()
     assert "4111 1111 1111 9876" not in txt_content
     assert "9876" in txt_content
+
+
+def test_pdf_sensitive_labels_redacted(tmp_path):
+    """Values that follow a sensitive label are redacted."""
+    from pii_cleaner.config import CleanerConfig, PDFConfig
+
+    config = CleanerConfig(pdf=PDFConfig(sensitive_labels=["Employee ID", "Home Address"]))
+    redactor = TextRedactor(config)
+    processor = PDFProcessor(config, redactor)
+
+    pdf_path = tmp_path / "payslip.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 fake")
+
+    mock_page = MagicMock()
+    mock_page.page_number = 1
+    mock_page.extract_text.return_value = (
+        "Employee ID: 00123456\n"
+        "Home Address: 123 Main St, Anytown NC 27701\n"
+        "Pay Period: 2026-04-01\n"
+    )
+    mock_page.extract_tables.return_value = []
+
+    mock_pdf = MagicMock()
+    mock_pdf.__enter__ = lambda s: s
+    mock_pdf.__exit__ = MagicMock(return_value=False)
+    mock_pdf.pages = [mock_page]
+
+    out_dir = tmp_path / "out"
+    with patch("pdfplumber.open", return_value=mock_pdf):
+        result = processor.process(pdf_path, out_dir, dry_run=False)
+
+    assert result.success
+    txt_content = (out_dir / "payslip.txt").read_text()
+    assert "00123456" not in txt_content
+    assert "123 Main St" not in txt_content
+    assert "Employee ID:" in txt_content          # label preserved
+    assert "Home Address:" in txt_content         # label preserved
+    assert "Pay Period" in txt_content            # unlabeled field untouched
